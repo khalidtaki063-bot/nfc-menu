@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>قائمة الطعام الذكية (NFC Menu)</title>
+    <style>
+        :root {
+            --primary: #1b4332;
+            --secondary: #d90429;
+            --accent: #ffb703;
+            --bg-color: #f8f9fa;
+            --card-bg: #ffffff;
+            --text-color: #212529;
+            --success: #2b9348;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
+            padding: 15px;
+        }
+        .container { max-width: 600px; margin: 0 auto; }
+        header {
+            background: linear-gradient(135deg, var(--primary), #2d6a4f);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.1);
+        }
+        header h1 { margin: 0 0 8px 0; font-size: 20px; }
+        .table-badge {
+            background-color: var(--accent);
+            color: #000;
+            padding: 6px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            display: inline-block;
+            margin-bottom: 8px;
+            font-size: 15px;
+        }
+        .menu-grid { display: flex; flex-direction: column; gap: 15px; }
+        .menu-item {
+            background: white;
+            border-radius: 12px;
+            padding: 15px;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+        }
+        .menu-item img {
+            width: 85px;
+            height: 85px;
+            object-fit: cover;
+            border-radius: 8px;
+            background: #eee;
+        }
+        .menu-info { flex: 1; }
+        .menu-info h4 { margin: 0 0 5px 0; color: var(--primary); font-size: 16px; }
+        .menu-info p { margin: 0 0 8px 0; color: #666; font-size: 13px; }
+        .price { font-weight: bold; color: var(--secondary); font-size: 15px; }
+        
+        .btn {
+            background-color: var(--success);
+            color: white;
+            border: none;
+            padding: 8px 14px;
+            font-size: 14px;
+            font-weight: bold;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+        .cart-box {
+            background: #fff3cd;
+            border: 1px solid #ffeeba;
+            padding: 20px;
+            border-radius: 12px;
+            margin-top: 25px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+        input {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ced4da;
+            border-radius: 6px;
+            font-size: 14px;
+            box-sizing: border-box;
+            margin-top: 5px;
+            background: #fff;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <header>
+            <h1 id="storeTitle">قائمة الطعام الرقمية</h1>
+            <div class="table-badge" id="displayTableNum">🍽️ جاري تحديد الطاولة...</div>
+            <p style="margin: 0; font-size: 13px; opacity: 0.9;">اختر طلبك بكل سهولة ويصل للمطبخ فوراً</p>
+        </header>
+
+        <div class="menu-grid" id="customerMenuGrid"></div>
+
+        <!-- السلة -->
+        <div class="cart-box" id="cartSection" style="display: none;">
+            <h3 style="margin-top: 0; color: var(--primary);">🛒 سلة طلبات الطاولة</h3>
+            <div id="cartItemsList"></div>
+            <div style="margin-top: 15px;">
+                <label style="font-weight: bold; font-size: 13px; color: var(--primary);">ملاحظات خاصة للطاهي (اختياري):</label>
+                <input type="text" id="orderNotes" placeholder="مثال: بدون بصل، زيادة تتبيلة...">
+            </div>
+            <button class="btn" type="button" style="width: 100%; margin-top: 15px; padding: 12px; font-size: 16px; background-color: var(--secondary);" onclick="submitOrder()">إرسال الطلب إلى المطبخ الآن 🚀</button>
+        </div>
+    </div>
+
+    <script>
+        const urlParams = new URLSearchParams(window.location.search);
+        const storeId = urlParams.get('store') || 'default_store';
+        
+        // استخراج رقم الطاولة بدقة من الرابط (مثال: ?table=5)
+        const tableNum = urlParams.get('table') || 'غير محددة';
+
+        // جلب اسم المطعم المحدث من لوحة الإدارة
+        const storeName = localStorage.getItem(`storeName_${storeId}`) || `متجر (${storeId})`;
+        document.getElementById('storeTitle').textContent = storeName;
+        document.getElementById('displayTableNum').textContent = `🍽️ الطاولة رقم: ${tableNum}`;
+
+        let cart = [];
+
+        document.addEventListener("DOMContentLoaded", () => {
+            loadMenu();
+        });
+
+        function getMenu() {
+            let defaultDishes = [
+                { id: 1, name: "قهوة إسبريسو", desc: "بن ممتاز وطازج", price: 15, img: "https://images.unsplash.com/photo-1510591509098-f4fdc6d0ff04?w=200" },
+                { id: 2, name: "وجبة دجاج فريش مشوي", desc: "تقدم مع البطاطس والمشروب", price: 65, img: "https://images.unsplash.com/photo-1598515214211-89d3c73ae83b?w=200" }
+            ];
+            let menuKey = `menu_${storeId}`;
+            let menu = JSON.parse(localStorage.getItem(menuKey));
+            if(!menu) {
+                menu = defaultDishes;
+                localStorage.setItem(menuKey, JSON.stringify(menu));
+            }
+            return menu;
+        }
+
+        function loadMenu() {
+            let menu = getMenu();
+            let grid = document.getElementById('customerMenuGrid');
+            grid.innerHTML = '';
+
+            menu.forEach(item => {
+                let div = document.createElement('div');
+                div.className = 'menu-item';
+                div.innerHTML = `
+                    <img src="${item.img || 'https://via.placeholder.com/90'}" alt="صورة">
+                    <div class="menu-info">
+                        <h4>${item.name}</h4>
+                        <p>${item.desc || ''}</p>
+                        <span class="price">${item.price} د.م</span>
+                    </div>
+                    <button class="btn" type="button" onclick="addToCart(${item.id})">إضافة ➕</button>
+                `;
+                grid.appendChild(div);
+            });
+        }
+
+        function addToCart(id) {
+            let menu = getMenu();
+            let item = menu.find(m => m.id === id);
+            if(!item) return;
+
+            let existing = cart.find(c => c.id === id);
+            if(existing) {
+                existing.qty++;
+            } else {
+                cart.push({ ...item, qty: 1 });
+            }
+            renderCart();
+        }
+
+        function renderCart() {
+            let section = document.getElementById('cartSection');
+            let list = document.getElementById('cartItemsList');
+
+            if(cart.length === 0) {
+                section.style.display = 'none';
+                return;
+            }
+
+            section.style.display = 'block';
+            list.innerHTML = '';
+            let total = 0;
+
+            cart.forEach((c, idx) => {
+                total += (parseFloat(c.price) * parseInt(c.qty));
+                let div = document.createElement('div');
+                div.style.cssText = "display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px; border-bottom: 1px solid #dee2e6; padding-bottom: 5px;";
+                div.innerHTML = `
+                    <span>${c.name} (×${c.qty})</span>
+                    <span><strong>${c.price * c.qty} د.م</strong> <button type="button" onclick="removeItem(${idx})" style="background:none; border:none; color:red; cursor:pointer; font-weight:bold; font-size:16px;">✕</button></span>
+                `;
+                list.appendChild(div);
+            });
+
+            let totalDiv = document.createElement('div');
+            totalDiv.style.cssText = "text-align: left; font-weight: bold; margin-top: 10px; font-size: 16px;";
+            totalDiv.innerHTML = `المجموع الكلي: <span style="color: var(--secondary);">${total} د.م</span>`;
+            list.appendChild(totalDiv);
+        }
+
+        function removeItem(idx) {
+            cart.splice(idx, 1);
+            renderCart();
+        }
+
+        function submitOrder() {
+            if(cart.length === 0) return;
+
+            let notes = document.getElementById('orderNotes').value.trim();
+            let ordersKey = `orders_${storeId}`;
+            let orders = JSON.parse(localStorage.getItem(ordersKey)) || [];
+
+            let newOrder = {
+                id: Date.now(),
+                table: tableNum,
+                items: [...cart],
+                notes: notes || 'بدون ملاحظات',
+                time: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+                status: 'قيد التحضير ⏳'
+            };
+
+            orders.unshift(newOrder);
+            localStorage.setItem(ordersKey, JSON.stringify(orders));
+
+            cart = [];
+            document.getElementById('orderNotes').value = '';
+            renderCart();
+            alert("تم إرسال طلبك بنجاح إلى المطبخ! شكراً لزيارتك ☕🍽️");
+        }
+    </script>
+</body>
+</html>
